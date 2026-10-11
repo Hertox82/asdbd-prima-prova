@@ -19,6 +19,7 @@ La struttura logica principale è la seguente:
 │   ├── hdfs/                      # Configurazione Hadoop/HDFS
 │   ├── jupyter/                   # Ambiente Python/Jupyter
 │   └── storage-metrics/           # Servizio di rilevazione dei volumi, se integrato
+├── immagini-analisi/              # Cartella contenente immagini usate per l'analisi
 ├── requirements.txt              # Dipendenze Python
 ├── notebooks/
 │   ├── 00_PROVA_COMPLETA.ipynb    # Notebook principale di presentazione
