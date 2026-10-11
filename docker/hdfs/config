@@ -1,0 +1,10 @@
+# Proprietà Hadoop esportate dall'entrypoint dell'immagine apache/hadoop.
+CORE-SITE.XML_fs.defaultFS=hdfs://namenode:8020
+HDFS-SITE.XML_dfs.namenode.rpc-address=namenode:8020
+HDFS-SITE.XML_dfs.replication=1
+# Il DataNode salva i blocchi nel proprio volume Docker, separato dagli altri nodi.
+HDFS-SITE.XML_dfs.datanode.data.dir=file:///data/datanode
+HDFS-SITE.XML_dfs.namenode.name.dir=file:///data/name
+# Accesso HTTP necessario per il client Python WebHDFS.
+HDFS-SITE.XML_dfs.webhdfs.enabled=true
+HDFS-SITE.XML_dfs.permissions.enabled=false

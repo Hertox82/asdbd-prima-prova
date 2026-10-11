@@ -1,0 +1,20 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Dataset e file generati
+data/
+results/
+
+# Cache e file temporanei
+.cache/
+*.tmp
+*.log
+
+# Configurazioni locali
+.env
