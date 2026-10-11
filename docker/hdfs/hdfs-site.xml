@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <!-- Con un solo DataNode non e' possibile usare replica 3 -->
+  <property><name>dfs.replication</name><value>1</value></property>
+  <property><name>dfs.namenode.name.dir</name><value>file:///data/name</value></property>
+  <property><name>dfs.datanode.data.dir</name><value>file:///data/datanode</value></property>
+  <property><name>dfs.webhdfs.enabled</name><value>true</value></property>
+  <!-- I client WebHDFS seguono il redirect verso questo hostname Docker -->
+  <property><name>dfs.datanode.hostname</name><value>datanode</value></property>
+  <property><name>dfs.client.use.datanode.hostname</name><value>true</value></property>
+  <property><name>dfs.permissions.enabled</name><value>false</value></property>
+</configuration>

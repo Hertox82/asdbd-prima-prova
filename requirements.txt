@@ -4,3 +4,7 @@ matplotlib
 fastavro
 pyarrow
 ijson
+boto3
+hdfs
+requests
+ipywidgets>=8.1,<9

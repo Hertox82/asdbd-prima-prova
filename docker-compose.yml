@@ -1,0 +1,254 @@
+name: asdbd-prima-prova
+
+# Laboratorio didattico: tre DataNode HDFS con replica 1, Ozone con replica 1.
+# I due cluster condividono la macchina fisica: non è un benchmark di produzione.
+x-hdfs-datanode: &hdfs-datanode
+  image: apache/hadoop:3.5.0
+  command: ["hdfs", "datanode"]
+  env_file: ./docker/hdfs/config
+  environment:
+    HADOOP_HEAPSIZE_MAX: 384m
+  depends_on:
+    namenode:
+      condition: service_started
+  networks: [lab]
+  restart: unless-stopped
+
+x-ozone-env: &ozone-env
+  OZONE-SITE.XML_hdds.datanode.dir: /data/hdds
+  OZONE-SITE.XML_ozone.metadata.dirs: /data/metadata
+  OZONE-SITE.XML_ozone.om.address: om
+  OZONE-SITE.XML_ozone.om.http-address: om:9874
+  OZONE-SITE.XML_ozone.recon.address: recon:9891
+  OZONE-SITE.XML_ozone.recon.db.dir: /data/metadata/recon
+  OZONE-SITE.XML_ozone.replication: "1"
+  OZONE-SITE.XML_ozone.server.default.replication: "1"
+  OZONE-SITE.XML_ozone.scm.block.client.address: scm
+  OZONE-SITE.XML_ozone.scm.client.address: scm
+  OZONE-SITE.XML_ozone.scm.datanode.id.dir: /data/metadata
+  OZONE-SITE.XML_ozone.scm.names: scm
+  no_proxy: om,scm,recon,s3g,ozone-datanode,localhost,127.0.0.1
+
+services:
+  # Inizializza ownership dei soli volumi HDFS. Rieseguibile senza perdita dati.
+  hdfs-init-permissions:
+    image: alpine:3.20
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        for dir in /volumes/name /volumes/dn1 /volumes/dn2 /volumes/dn3; do
+          mkdir -p "$$dir"
+          chown -R 1001:100 "$$dir"
+        done
+        echo 'Volumi HDFS: permessi pronti'
+    volumes:
+      - hdfs-name:/volumes/name
+      - hdfs-dn1:/volumes/dn1
+      - hdfs-dn2:/volumes/dn2
+      - hdfs-dn3:/volumes/dn3
+    restart: "no"
+
+  # Formatta automaticamente soltanto uno storage NameNode nuovo.
+  # L'immagine Hadoop prepara i file XML a partire da docker/hdfs/config.
+  hdfs-init-namenode:
+    image: apache/hadoop:3.5.0
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        if [ -f /data/name/current/VERSION ]; then
+          echo 'NameNode gia inizializzato: metadati conservati'
+          exit 0
+        fi
+        # Dopo un avvio fallito Hadoop puo lasciare il solo in_use.lock.
+        # Qualunque altro contenuto non riconosciuto blocca la formattazione.
+        if [ -n "$(find /data/name -mindepth 1 -maxdepth 1 ! -name in_use.lock -print -quit)" ]; then
+          echo 'ERRORE: storage HDFS non vuoto ma senza VERSION; formattazione bloccata' >&2
+          exit 1
+        fi
+        rm -f /data/name/in_use.lock
+        echo 'Prima inizializzazione del NameNode HDFS'
+        hdfs namenode -format -nonInteractive
+        test -f /data/name/current/VERSION || { echo 'ERRORE: formattazione incompleta' >&2; exit 1; }
+    env_file: ./docker/hdfs/config
+    environment:
+      HADOOP_HEAPSIZE_MAX: 512m
+    depends_on:
+      hdfs-init-permissions:
+        condition: service_completed_successfully
+    volumes:
+      - hdfs-name:/data/name
+    networks: [lab]
+    restart: "no"
+
+  namenode:
+    image: apache/hadoop:3.5.0
+    hostname: namenode
+    command: ["hdfs", "namenode"]
+    env_file: ./docker/hdfs/config
+    environment:
+      HADOOP_HEAPSIZE_MAX: 512m
+    ports:
+      - "127.0.0.1:9870:9870"
+    volumes:
+      - hdfs-name:/data/name
+    depends_on:
+      hdfs-init-namenode:
+        condition: service_completed_successfully
+    networks: [lab]
+    restart: unless-stopped
+
+  hdfs-datanode-1:
+    <<: *hdfs-datanode
+    hostname: hdfs-datanode-1
+    volumes:
+      - hdfs-dn1:/data/datanode
+
+  hdfs-datanode-2:
+    <<: *hdfs-datanode
+    hostname: hdfs-datanode-2
+    volumes:
+      - hdfs-dn2:/data/datanode
+
+  hdfs-datanode-3:
+    <<: *hdfs-datanode
+    hostname: hdfs-datanode-3
+    volumes:
+      - hdfs-dn3:/data/datanode
+
+  scm:
+    image: apache/ozone:2.2.1
+    hostname: scm
+    command: ["ozone", "scm"]
+    environment:
+      <<: *ozone-env
+      ENSURE_SCM_INITIALIZED: /data/metadata/scm/current/VERSION
+      OZONE-SITE.XML_hdds.scm.safemode.min.datanode: "1"
+      OZONE-SITE.XML_hdds.scm.safemode.healthy.pipeline.pct: "0"
+      OZONE-SITE.XML_hdds.scm.safemode.pipeline.availability.check: "false"
+      OZONE-SITE.XML_hdds.scm.safemode.threshold.pct: "0"
+      JAVA_TOOL_OPTIONS: -Xms64m -Xmx384m
+    volumes:
+      - ozone-scm:/data
+    networks: [lab]
+    restart: unless-stopped
+
+  om:
+    image: apache/ozone:2.2.1
+    hostname: om
+    command: ["ozone", "om"]
+    environment:
+      <<: *ozone-env
+      ENSURE_OM_INITIALIZED: /data/metadata/om/current/VERSION
+      WAITFOR: scm:9876
+      CORE-SITE.XML_hadoop.proxyuser.hadoop.hosts: "*"
+      CORE-SITE.XML_hadoop.proxyuser.hadoop.groups: "*"
+      JAVA_TOOL_OPTIONS: -Xms64m -Xmx384m
+    ports:
+      - "127.0.0.1:9874:9874"
+    volumes:
+      - ozone-om:/data
+    depends_on: [scm]
+    networks: [lab]
+    restart: unless-stopped
+
+  ozone-datanode:
+    image: apache/ozone:2.2.1
+    hostname: ozone-datanode
+    command: ["ozone", "datanode"]
+    environment:
+      <<: *ozone-env
+      WAITFOR: scm:9876
+      JAVA_TOOL_OPTIONS: -Xms64m -Xmx512m
+    volumes:
+      - ozone-dn:/data
+    depends_on: [scm]
+    networks: [lab]
+    restart: unless-stopped
+
+  s3g:
+    image: apache/ozone:2.2.1
+    hostname: s3g
+    command: ["ozone", "s3g"]
+    environment:
+      <<: *ozone-env
+      WAITFOR: om:9874
+      JAVA_TOOL_OPTIONS: -Xms64m -Xmx384m
+    ports:
+      - "127.0.0.1:9878:9878"
+    depends_on: [om]
+    networks: [lab]
+    restart: unless-stopped
+
+  recon:
+    image: apache/ozone:2.2.1
+    hostname: recon
+    command: ["ozone", "recon"]
+    environment:
+      <<: *ozone-env
+      WAITFOR: om:9874
+      JAVA_TOOL_OPTIONS: -Xms64m -Xmx384m
+    ports:
+      - "127.0.0.1:9888:9888"
+    volumes:
+      - ozone-recon:/data
+    depends_on: [om]
+    networks: [lab]
+    restart: unless-stopped
+
+  # Espone solo nella rete Docker le misure di spazio dei volumi.
+  # Nessuna porta pubblicata e mount in sola lettura.
+  storage-metrics:
+    image: python:3.12-alpine
+    user: "0:0"
+    command: ["python", "-u", "/app/server.py"]
+    volumes:
+      - ./docker/storage-metrics/server.py:/app/server.py:ro
+      - hdfs-name:/mnt/hdfs/name:ro
+      - hdfs-dn1:/mnt/hdfs/dn1:ro
+      - hdfs-dn2:/mnt/hdfs/dn2:ro
+      - hdfs-dn3:/mnt/hdfs/dn3:ro
+      - ozone-scm:/mnt/ozone/scm:ro
+      - ozone-om:/mnt/ozone/om:ro
+      - ozone-dn:/mnt/ozone/dn:ro
+      - ozone-recon:/mnt/ozone/recon:ro
+    networks: [lab]
+    restart: unless-stopped
+
+  jupyter:
+    build:
+      context: .
+      dockerfile: docker/jupyter/Dockerfile
+    hostname: jupyter
+    working_dir: /home/jovyan/work
+    command: ["start-notebook.py", "--ServerApp.root_dir=/home/jovyan/work", "--IdentityProvider.token=", "--ServerApp.password="]
+    environment:
+      PYTHONPATH: /home/jovyan/work
+      HDFS_WEBHDFS_URL: http://namenode:9870
+      OZONE_S3_ENDPOINT: http://s3g:9878
+      STORAGE_METRICS_URL: http://storage-metrics:8765
+      AWS_ACCESS_KEY_ID: testuser/scm@EXAMPLE.COM
+      AWS_SECRET_ACCESS_KEY: c261b6ecabf7d37d5f9ded654b1c724adac9bd9f13e247a235e567e8296d2999
+      AWS_DEFAULT_REGION: us-east-1
+    ports:
+      - "127.0.0.1:8888:8888"
+    volumes:
+      - ./:/home/jovyan/work
+    depends_on: [namenode, hdfs-datanode-1, hdfs-datanode-2, hdfs-datanode-3, s3g, recon, storage-metrics]
+    networks: [lab]
+    restart: unless-stopped
+
+networks:
+  lab:
+    driver: bridge
+
+volumes:
+  hdfs-name:
+  hdfs-dn1:
+  hdfs-dn2:
+  hdfs-dn3:
+  ozone-scm:
+  ozone-om:
+  ozone-dn:
+  ozone-recon:
