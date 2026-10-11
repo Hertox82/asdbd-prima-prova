@@ -1,6 +1,6 @@
 # Sistemi di gestione dei dati e storage distribuito
 
-**Elaborato sperimentale — Algoritmi e Strutture Dati per i Big Data, Modulo 2**
+**Elaborato sperimentale — Algoritmi e Strutture Dati per i Big Data**
 
 ## Obiettivo
 
@@ -18,9 +18,9 @@ La struttura logica principale è la seguente:
 ├── docker/                        # Configurazioni e immagini di supporto
 │   ├── hdfs/                      # Configurazione Hadoop/HDFS
 │   ├── jupyter/                   # Ambiente Python/Jupyter
-│   └── storage-metrics/           # Servizio di rilevazione dei volumi, se integrato
+│   └── storage-metrics/           # Servizio di rilevazione dei volumi
 ├── immagini-analisi/              # Cartella contenente immagini usate per l'analisi
-├── requirements.txt              # Dipendenze Python
+├── requirements.txt               # Dipendenze Python
 ├── notebooks/
 │   ├── 00_PROVA_COMPLETA.ipynb    # Notebook principale di presentazione
 │   └── test/
